@@ -49,5 +49,98 @@ app.post("/login", (req, res) => {
     res.json({ message: "Login exitoso", token });
 });
 
+// Ruta de forgot-password
+app.post("/forgot-password", (req, res) => {
+    const { email } = req.body;
+    const user = users.find(u => u.email === email);
+  
+    if (!user) {
+        return res.status(404).json({ error: "Correo no encontrado" });
+    }
+  
+    // Generar un token único
+    const token = crypto.randomBytes(32).toString("hex");
+    const expirationTime = Date.now() + 15 * 60 * 1000; // Expira en 15 min
+  
+    // Guardar el token en la lista temporal
+    passwordResetTokens.push({ token, userId: user.id, used: false, expires: expirationTime });
+  
+    // Enviar correo con el enlace de recuperación
+    const resetLink = `http://localhost:3000/reset-password?token=${token}`;
+    const mailOptions = {
+        from: "tu_correo@gmail.com",
+        to: email,
+        subject: "Recuperación de Contraseña",
+        html: `<p>Haz clic en el siguiente enlace para restablecer tu contraseña:</p>
+               <a href="${resetLink}">${resetLink}</a>
+               <p>Este enlace expira en 15 minutos.</p>`
+    };
+  
+    transporter.sendMail(mailOptions, (err, info) => {
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ error: "Error al enviar el correo" });
+        }
+        res.json({ message: "Correo enviado, revisa tu bandeja de entrada" });
+    });
+  });
+  
+  app.get("/reset-password", (req, res) => {
+    res.sendFile(__dirname + "/public/reset-password.html"); // Asegúrate de que el archivo exista
+  });
+  
+  app.post("/reset-password", (req, res) => {
+    const { token, newPassword } = req.body;
+  
+    // Buscar el token
+    const storedToken = passwordResetTokens.find(t => t.token === token);
+  
+    if (!storedToken) {
+        return res.status(400).json({ error: "Token inválido" });
+    }
+  
+    if (storedToken.used) {
+        return res.status(400).json({ error: "El token ya ha sido usado" });
+    }
+  
+    if (Date.now() > storedToken.expires) {
+        return res.status(400).json({ error: "El token ha expirado" });
+    }
+  
+  
+    // Buscar el usuario
+    const user = users.find(u => u.id === storedToken.userId);
+    if (!user) {
+        return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+  
+    // Actualizar la contraseña
+    user.password = bcrypt.hashSync(newPassword, 10);
+    console.log("Contraseña hasheada:", user.password);
+  
+  
+    // Marcar el token como usado
+    storedToken.used = true;
+  
+    res.json({ message: "Contraseña actualizada correctamente" });
+  });
+  
+  // Middleware para verificar token
+  function verifyToken(req, res, next) {
+      const token = req.headers["authorization"];
+      
+      if (!token) {
+          return res.status(403).json({ error: "Token requerido" });
+      }
+  
+      jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+          if (err) {
+              return res.status(401).json({ error: "Token inválido" });
+          }
+          req.user = decoded;
+          next();
+      });
+  }
+
 // Iniciar servidor
 app.listen(PORT, () => console.log(`Servidor corriendo en http://localhost:${PORT}`));
