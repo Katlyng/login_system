@@ -30,8 +30,12 @@ app.use(cors()); //permite solicitudes de otros dominios
 app.use(bodyParser.json()); //para que el cuerpo de las peticiones se interprete como JSON
 app.use(express.static("public")); // Para servir archivos HTML/CSS
 
+app.get("/index", (req, res) => {
+    res.sendFile(__dirname + "/public/index.html"); // Asegúrate de que el archivo exista
+  });
+
 // Ruta de login
-app.post("/login", (req, res) => {
+app.post("/index", (req, res) => {
     const { username, password } = req.body; //se extraen del cuerpo de la solicitud
 
     // Buscar usuario (SELECT)
