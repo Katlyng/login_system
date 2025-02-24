@@ -6,6 +6,7 @@ const cors = require("cors"); //para permitir peticiones desde otros dominios
 const bodyParser = require("body-parser"); //para leer datos enviados desde el cliente y convertirlos a JSON
 const nodemailer = require("nodemailer"); //para enviar correos electrónicos
 const crypto = require("crypto"); //para generar tokens aleatorios
+const path = require('path');
 
 const app = express(); //inicializar la aplicación
 const PORT = process.env.PORT || 3000; //puerto del servidor usando la varibale de entorno o por defecto (3000)
@@ -35,7 +36,7 @@ app.get("/index", (req, res) => {
   });
 
 // Ruta de login
-app.post("/index", (req, res) => {
+app.post("/login", (req, res) => {
     const { username, password } = req.body; //se extraen del cuerpo de la solicitud
 
     // Buscar usuario (SELECT)
@@ -90,8 +91,7 @@ app.post("/forgot-password", (req, res) => {
   });
   
   app.get("/reset-password", (req, res) => {
-    res.sendFile(__dirname + "/public/reset-password.html");
-  });
+    res.sendFile(path.join(__dirname, '..', 'public', 'reset-password.html'));  });
   
   app.post("/reset-password", (req, res) => {
     const { token, newPassword } = req.body;
