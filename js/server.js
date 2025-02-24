@@ -86,7 +86,7 @@ app.post("/forgot-password", (req, res) => {
   });
   
   app.get("/reset-password", (req, res) => {
-    res.sendFile(__dirname + "/public/reset-password.html"); // Asegúrate de que el archivo exista
+    res.sendFile(__dirname + "/public/reset-password.html");
   });
   
   app.post("/reset-password", (req, res) => {
