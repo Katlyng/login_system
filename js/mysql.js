@@ -33,6 +33,24 @@ const addUser = async () => {
     console.log(error);
   }
 };
-addUser();
+const initializeDatabase = async () => {
+  console.log("Inicializando la base de datos...");
+  await addUser();
+  await getusers();
+  // await pool.end(); // Finalizar la conexión
+};
+const updateHashPassword = async (userId, newPasswordHash) => {
+  try {
+    const [result] = await pool.query("UPDATE users SET hash_password = ?, update_date = NOW() WHERE user_id = ?",
+      [newPasswordHash, userId]
+    );
+    return result.affectedRows > 0;
+    
+  } catch (error) {
+    console.log("Error al actualizar la contraseña:", error);
+    return false;
+    
+  }
 
-getusers();
+}
+module.exports = { initializeDatabase, updateHashPassword };
