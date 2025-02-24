@@ -1,20 +1,41 @@
-<!-- FRONTEND -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login</title>
+    <title>Login con JWT</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
         <h2>Iniciar Sesión</h2>
-        <form action="/login" method="POST">
-            <input type="text" name="username" placeholder="Usuario" required>
-            <input type="password" name="password" placeholder="Contraseña" required>
-            <button type="submit">Ingresar</button>
-        </form>
+        <input type="text" id="username" placeholder="Usuario">
+        <input type="password" id="password" placeholder="Contraseña">
+        <button onclick="login()">Ingresar</button>
+        <p id="message"></p>
+        <a href="forgot-password.html">¿Olvidaste tu contraseña?</a>
     </div>
+
+    
+
+    <script>
+        async function login() {
+            const username = document.getElementById("username").value;
+            const password = document.getElementById("password").value;
+            const response = await fetch("/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password })
+            });
+
+            const data = await response.json();
+            document.getElementById("message").innerText = data.message || data.error;
+            
+            if (response.ok) {
+                localStorage.setItem("token", data.token);
+            }
+        }
+    </script>
+
 </body>
 </html>
