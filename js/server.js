@@ -1,72 +1,53 @@
-// BACKEND
+require("dotenv").config(); //para cargar las variables de entorno (clase secreta JWT, recomendado incluir puertos)
+const express = require("express"); //framework para crear aplicaciones web
+const jwt = require("jsonwebtoken"); //para crear y verificar tokens JWT
+const bcrypt = require("bcryptjs"); //para encriptar y comparar contraseñas
+const cors = require("cors"); //para permitir peticiones desde otros dominios
+const bodyParser = require("body-parser"); //para leer datos enviados desde el cliente y convertirlos a JSON
+const nodemailer = require("nodemailer"); //para enviar correos electrónicos
+const crypto = require("crypto"); //para generar tokens aleatorios
 
-//Importación de módulos
-const express = require("express"); //Crea el servidor web
-const session = require("express-session"); // Middleware que maneja sesiones en el servidor
-const path = require("path"); // Módulo que maneja las rutas de archivo
+const app = express(); //inicializar la aplicación
+const PORT = process.env.PORT || 3000; //puerto del servidor usando la varibale de entorno o por defecto (3000)
 
-//Config. del servidor
-const app = express(); 
-const PORT = 3000;
+const users = [
+    { id: 1, username: "admin", password: bcrypt.hashSync("123456", 10), email: "katlyn2galvis@gmail.com" }
+];
 
-// Configuración de sesión
-app.use(
-  session({
-    secret: "secreto", //Firma la sesión
-    resave: false, //Evite que se guarde la sesión si no ha sido modificada
-    saveUninitialized: true, //Guarda sesiones nuevas aunque no esten modificadas
-  })
-);
+const passwordResetTokens = []; // Lista temporal para almacenar los tokens cuando un usuario solicita restablecer su contraseña
 
-// Middleware para manejar datos de formulario
-app.use(express.urlencoded({ extended: true })); 
-
-// Servir archivos estáticos como html
-app.use(express.static(path.join(__dirname)));
-
-// Credenciales quemadas
-const userData = {
-  username: "admin",
-  password: "12345",
-};
-
-// Ruta para la página de login
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "index.html"));
+// Configurar el servicio de correo 
+const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+        user: process.env.EMAIL_USER, 
+        pass: process.env.EMAIL_PASS  
+    }
 });
 
-// Manejo del login
+// Middleware
+app.use(cors()); //permite solicitudes de otros dominios
+app.use(bodyParser.json()); //para que el cuerpo de las peticiones se interprete como JSON
+app.use(express.static("public")); // Para servir archivos HTML/CSS
+
+// Ruta de login
 app.post("/login", (req, res) => {
-  const { username, password } = req.body;
+    const { username, password } = req.body; //se extraen del cuerpo de la solicitud
 
-  if (username === userData.username && password === userData.password) {
-    req.session.user = username;
-    //Si está correcta la info, redijire a la página de éxito
-    res.redirect("/success"); 
-  } else {
-    //Si no está correcta la info, envía una alerta
-    res.send("<script>alert('Credenciales incorrectas'); window.location='/';</script>"); 7
-    
-  }
-});
+    // Buscar usuario (SELECT)
+    const user = users.find(u => u.username === username);
 
-// Página de éxito después del login
-app.get("/success", (req, res) => {
-  if (req.session.user) {
-    res.sendFile(path.join(__dirname, "success.html"));
-  } else {
-    res.redirect("/");
-  }
-});
+    if (!user || !bcrypt.compareSync(password, user.password)) {
+        return res.status(401).json({ error: "Usuario o contraseña incorrectos" });
+    }
 
-// Cerrar sesión
-app.get("/logout", (req, res) => {
-  req.session.destroy(() => {
-    res.redirect("/");
-  });
+    // Crear token JWT
+    const token = jwt.sign({ id: user.id, username: user.username }, process.env.JWT_SECRET, {
+        expiresIn: "1h",
+    });
+
+    res.json({ message: "Login exitoso", token });
 });
 
 // Iniciar servidor
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
-});
+app.listen(PORT, () => console.log(`Servidor corriendo en http://localhost:${PORT}`));
