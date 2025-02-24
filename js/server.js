@@ -7,13 +7,12 @@ const bodyParser = require("body-parser"); //para leer datos enviados desde el c
 const nodemailer = require("nodemailer"); //para enviar correos electrónicos
 const crypto = require("crypto"); //para generar tokens aleatorios
 const path = require('path');
+const users = require('./users.js'); // Importar la lista de usuarios
+
 
 const app = express(); //inicializar la aplicación
 const PORT = process.env.PORT || 3000; //puerto del servidor usando la varibale de entorno o por defecto (3000)
 
-const users = [
-    { id: 1, username: "admin", password: bcrypt.hashSync("123456", 10), email: "katlyn2galvis@gmail.com" }
-];
 
 const passwordResetTokens = []; // Lista temporal para almacenar los tokens cuando un usuario solicita restablecer su contraseña
 
