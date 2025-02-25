@@ -13,6 +13,12 @@ const users = [
     password: bcrypt.hashSync("123456", 10),
     email: "juan.albornoz@uptc.edu.co",
   },
+  {
+    id: 3,
+    username: "mafe",
+    password: bcrypt.hashSync("123456", 10),
+    email: "maria.sogamoso@uptc.edu.co",
+  },
 ];
 
 module.exports = users;
