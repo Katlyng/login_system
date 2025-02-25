@@ -16,7 +16,7 @@
         <a href="forgot-password.html">¿Olvidaste tu contraseña?</a>
     </div>
 
-    <script>
+    <!-- <script>
         async function login() {
             const username = document.getElementById("username").value;
             const password = document.getElementById("password").value;
@@ -33,7 +33,61 @@
                 localStorage.setItem("token", data.token);
             }
         }
-    </script>
+    </script> -->
+    <script>
+        async function login() {
+            const username = document.getElementById("username").value;
+            const password = document.getElementById("password").value;
+    
+            const response = await fetch("/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password })
+            });
+    
+            const data = await response.json();
+            document.getElementById("message").innerText = data.message || data.error;
+    
+            if (response.ok) {
+                localStorage.setItem("token", data.token);
+    
+                // Decodificar el token para obtener los roles
+                const payload = JSON.parse(atob(data.token.split(".")[1]));
+                const roles = payload.roles || [];
+    
+                // Si el usuario es admin, redirigirlo al panel de admin
+                if (roles.includes("admin")) {
+                    window.location.href = "admin.html";
+                } else {
+                    alert("Inicio de sesión exitoso, pero no tienes acceso de administrador.");
+                }
+            }
+        }
+    
+        // Función para acceder a la página de admin con el token
+        async function accessAdminPanel() {
+            const token = localStorage.getItem("token");
+    
+            if (!token) {
+                alert("No tienes un token de sesión. Inicia sesión primero.");
+                return;
+            }
+    
+            const response = await fetch("/admin", {
+                method: "GET",
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+    
+            const data = await response.json();
+    
+            if (response.ok) {
+                alert(data.message); // Muestra el mensaje de bienvenida
+                window.location.href = "admin.html"; // Redirige si tiene acceso
+            } else {
+                alert(data.error); // Muestra el error si no tiene permisos
+            }
+        }
+    </script>   
 
 </body>
 </html>
