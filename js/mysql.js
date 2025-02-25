@@ -3,12 +3,13 @@ const users = require("./users.js");
 const roles = require("./roles.js"); 
 const userRoles = require("./users_roles.js");
 
-const getusers = async () => {
+const getUsers = async () => {
   try {
     const [result] = await pool.query("SELECT * FROM users");
-    console.log(result);
+    return result;   
   } catch (error) {
-    console.log(error);
+    console.error("Error al obtener usuarios:", error);
+    return []; 
   }
 };
 const addUser = async () => {
@@ -45,6 +46,8 @@ const initializeDatabase = async () => {
   // await pool.end(); // Finalizar la conexión
 };
 const updateHashPassword = async (userId, newPasswordHash) => {
+  console.log(`Actualizando contraseña para user_id: ${userId}`); 
+  console.log(`Nueva contraseña hasheada: ${newPasswordHash}`);
   try {
     const [result] = await pool.query("UPDATE users SET hash_password = ?, update_date = NOW() WHERE user_id = ?",
       [newPasswordHash, userId]
