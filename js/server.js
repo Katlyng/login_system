@@ -11,6 +11,7 @@ const path = require("path");
 const { initializeDatabase } = require("../js/mysql.js");
 const { updateHashPassword } = require("../js/mysql.js");
 const { getUsers } = require("../js/mysql.js");
+const { getUserRoles } = require("../js/mysql.js");
 
 const app = express(); //inicializar la aplicación
 const PORT = process.env.PORT || 3000; //puerto del servidor usando la varibale de entorno o por defecto (3000)

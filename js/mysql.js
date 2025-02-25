@@ -39,7 +39,7 @@ const addUser = async () => {
 const initializeDatabase = async () => {
   console.log("Inicializando la base de datos...");
   await addUser();
-  await getusers();
+  await getUsers();
   await addRoles();
   await getUserRoles();
   await addUserRoles();
@@ -120,4 +120,4 @@ const getUserRoles = async (userId) => {
   }
 };
 
-module.exports = { initializeDatabase, updateHashPassword, getUserRoles  };
+module.exports = { initializeDatabase, updateHashPassword, getUserRoles, getUsers  };
