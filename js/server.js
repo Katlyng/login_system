@@ -7,11 +7,9 @@ const bodyParser = require("body-parser"); //para leer datos enviados desde el c
 const nodemailer = require("nodemailer"); //para enviar correos electrónicos
 const crypto = require("crypto"); //para generar tokens aleatorios
 const path = require("path");
-const users = require("./users.js"); // Importar la lista de usuarios
 const { initializeDatabase } = require("../js/mysql.js");
 const { updateHashPassword } = require("../js/mysql.js");
-
-// initializeDatabase();
+const { getUsers } = require("../js/mysql.js");
 
 const app = express(); //inicializar la aplicación
 const PORT = process.env.PORT || 3000; //puerto del servidor usando la varibale de entorno o por defecto (3000)
@@ -37,32 +35,44 @@ app.get("/index", (req, res) => {
 });
 
 // Ruta de login
-app.post("/login", (req, res) => {
+app.post("/login", async (req, res) => {
   const { username, password } = req.body; //se extraen del cuerpo de la solicitud
 
   // Buscar usuario (SELECT)
-  const user = users.find((u) => u.username === username);
+  const usersList = await getUsers();
+  console.log("Lista de usuarios obtenida:", usersList);
+  const user = usersList.find((u) => u.name === username);
 
-  if (!user || !bcrypt.compareSync(password, user.password)) {
+  if (!user) {
+    
     return res.status(401).json({ error: "Usuario o contraseña incorrectos" });
+  }
+
+  // Comparar la contraseña ingresada con el hash almacenado
+  const isMatch = await bcrypt.compare(password, user.hash_password);
+
+  if (!isMatch) {
+    
+    return res.status(401).json({ error: "Usuario o contraseña incorrectos" })
+    ;
   }
 
   // Crear token JWT
   const token = jwt.sign(
-    { id: user.id, username: user.username },
+    { id: user.user_id, username: user.name },
     process.env.JWT_SECRET,
     {
       expiresIn: "1h",
     }
   );
-
   res.json({ message: "Login exitoso", token });
 });
 
 // Ruta de forgot-password
-app.post("/forgot-password", (req, res) => {
+app.post("/forgot-password", async (req, res) => {
   const { email } = req.body;
-  const user = users.find((u) => u.email === email);
+  const usersList = await getUsers();
+  const user = usersList.find((u) => u.email === email);
 
   if (!user) {
     return res.status(404).json({ error: "Correo no encontrado" });
@@ -75,7 +85,7 @@ app.post("/forgot-password", (req, res) => {
   // Guardar el token en la lista temporal
   passwordResetTokens.push({
     token,
-    userId: user.id,
+    userId: user.user_id,
     used: false,
     expires: expirationTime,
   });
@@ -123,18 +133,19 @@ app.post("/reset-password", async (req, res) => {
   }
 
   // Buscar el usuario
-  const user = users.find((u) => u.id === storedToken.userId);
+  const usersList = await getUsers();
+  const user = usersList.find((u) => u.user_id === storedToken.userId);
   if (!user) {
     return res.status(404).json({ error: "Usuario no encontrado" });
   }
 
   // Actualizar la contraseña
-  user.password = bcrypt.hashSync(newPassword, 10);
-  console.log("Contraseña hasheada:", user.password);
+  
   try {
     // Actualizar en la base de datos
-    const passwordUpdateddb = await updateHashPassword(user.id, user.password);
-    console.log("Contraseña actualizada en la BD:", passwordUpdateddb);
+    const hashedPassword = bcrypt.hashSync(newPassword, 10);
+    const passwordUpdateddb = await updateHashPassword(user.user_id, hashedPassword);   
+     console.log("Contraseña actualizada en la BD:", passwordUpdateddb);
 
     // Marcar el token como usado
     storedToken.used = true;
