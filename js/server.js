@@ -95,7 +95,6 @@ function verifyRole(requiredRole) {
 
 // Ruta protegida para administradores
 app.get("/admin", verifyToken, verifyRole("admin"), (req, res) => {
-    res.json({ message: "Bienvenido al panel de administrador" });
 });
 
 // Ruta de forgot-password
@@ -110,7 +109,7 @@ app.post("/forgot-password", async (req, res) => {
 
   // Generar un token único
   const token = crypto.randomBytes(32).toString("hex");
-  const expirationTime = Date.now() + 15 * 60 * 1000; // Expira en 15 min
+  const expirationTime = Date.now() + 10 * 60 * 1000; // Expira en 15 min
 
   // Guardar el token en la lista temporal
   passwordResetTokens.push({
@@ -128,7 +127,7 @@ app.post("/forgot-password", async (req, res) => {
     subject: "Recuperación de Contraseña",
     html: `<p>Haz clic en el siguiente enlace para restablecer tu contraseña:</p>
                <a href="${resetLink}">${resetLink}</a>
-               <p>Este enlace expira en 15 minutos.</p>`,
+               <p>Este enlace expira en 10 minutos.</p>`,
   };
 
   transporter.sendMail(mailOptions, (err, info) => {
