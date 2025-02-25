@@ -38,7 +38,7 @@ app.get("/index", (req, res) => {
 
 // Ruta de login
 app.post("/login", (req, res) => {
-  const { username, password } = req.body; //se extraen del cuerpo de la solicitud
+    const { username, password } = req.body; //se extraen del cuerpo de la solicitud
 
   // Buscar usuario (SELECT)
   const user = users.find((u) => u.username === username);
