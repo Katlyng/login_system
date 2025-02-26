@@ -8,14 +8,11 @@ const bodyParser = require("body-parser"); //para leer datos enviados desde el c
 const nodemailer = require("nodemailer"); //para enviar correos electrónicos
 const crypto = require("crypto"); //para generar tokens aleatorios
 const path = require("path");
-const { initializeDatabase } = require("../js/mysql.js");
-const { updateHashPassword } = require("../js/mysql.js");
-const { getUsers } = require("../js/mysql.js");
-const { getUserRoles } = require("../js/mysql.js");
+const {   initializeDatabase, updateHashPassword, getUsers, getUserRoles, incrementFailedAttempts, resetFailedAttempts, blockAccount, unlockAccount } = require("../js/mysql.js");
+
 
 const app = express(); //inicializar la aplicación
 const PORT = process.env.PORT || 3000; //puerto del servidor usando la varibale de entorno o por defecto (3000)
-
 const passwordResetTokens = []; // Lista temporal para almacenar los tokens cuando un usuario solicita restablecer su contraseña
 
 // Configurar el servicio de correo
@@ -31,11 +28,35 @@ const transporter = nodemailer.createTransport({
 app.use(cors()); //permite solicitudes de otros dominios
 app.use(bodyParser.json()); //para que el cuerpo de las peticiones se interprete como JSON
 app.use(express.static("public")); // Para servir archivos HTML/CSS
+// Middleware para verificar token
+function verifyToken(req, res, next) {
+  const token = req.headers["authorization"];
+
+  if (!token) {
+    return res.status(403).json({ error: "Token requerido" });
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(401).json({ error: "Token inválido" });
+    }
+    req.user = decoded;
+    next();
+  });
+}
+// Middleware para verificar si un usuario tiene un rol específico
+function verifyRole(requiredRole) {
+  return (req, res, next) => {
+    if (!req.user || !req.user.roles.includes(requiredRole)) {
+      return res.status(403).json({ error: "Acceso denegado" });
+    }
+    next();
+  };
+}
 
 app.get("/index", (req, res) => {
   res.sendFile(__dirname + "/public/index.html"); // Asegúrate de que el archivo exista
 });
-
 // Ruta de login
 app.post("/login", async (req, res) => {
   const { username, password } = req.body; //se extraen del cuerpo de la solicitud
@@ -46,56 +67,160 @@ app.post("/login", async (req, res) => {
   const user = usersList.find((u) => u.name === username);
 
   if (!user) {
-    
     return res.status(401).json({ error: "Usuario o contraseña incorrectos" });
   }
 
-// Obtener roles del usuario
-let roleNames = [];
-if (user) {
-    try {
-        const roles = await getUserRoles(user.user_id); // Obtener roles desde la BD
-        console.log("Datos crudos de roles obtenidos:", roles);
-        roleNames = roles.map(role => role.name);
-        console.log("Roles después de map:", roleNames);
-    } catch (error) {
-        console.error("Error obteniendo roles:", error);
-        return res.status(500).json({ error: "Error obteniendo roles del usuario" });
-    }
-}
-// Comparar la contraseña ingresada con el hash almacenado
-const isMatch = await bcrypt.compare(password, user.hash_password);
+  //verificar si la cuenta está bloqueada
+  if (user.blocked === 1) {
+    return res.status(403).json({ error: "Cuenta bloqueada por múltiples intentos fallidos. Revisa tu correo para desbloquearla." });
+  }
 
-if (!isMatch) {
-  
-  return res.status(401).json({ error: "Usuario o contraseña incorrectos" })
-  ;
-}
-  // Crear token JWT
-  const token = jwt.sign(
-    { id: user.id, username: user.name, roles: roleNames },
-  
-  process.env.JWT_SECRET,
-    {
-      expiresIn: "1h",
+  // Comparar la contraseña ingresada con el hash almacenado
+  const isMatch = await bcrypt.compare(password, user.hash_password);
+
+  if (!isMatch) {
+    // Incrementar contador de intentos fallidos
+    await incrementFailedAttempts(user.user_id);
+    
+    //volver a obtener usuario actualizado
+    const updatedUser = (await getUsers()).find((u) => u.user_id === user.user_id);
+    
+    //verificar si se alcanzó el límite de intentos
+    if (updatedUser.failed_try >= 5) {
+      //bloquear cuenta
+      await blockAccount(user.user_id);
+      //enviar correo de desbloqueo
+      await sendUnlockEmail(user.email, user.user_id);
+      
+      return res.status(403).json({ error: "Cuenta bloqueada por múltiples intentos fallidos. Se ha enviado un correo para desbloquearla." });
     }
-  );
-  res.json({ message: "Login exitoso", token });
+    
+    return res.status(401).json({ error: `Usuario o contraseña incorrectos. Intentos restantes: ${5 - updatedUser.failed_try}` });
+  } else {
+    // Si la contraseña es correcta, restablecer contador de intentos fallidos
+    await resetFailedAttempts(user.user_id);
+    
+    // Obtener roles del usuario
+    let roleNames = [];
+    try {
+      const roles = await getUserRoles(user.user_id); // Obtener roles desde la BD
+      console.log("Datos crudos de roles obtenidos:", roles);
+      roleNames = roles.map(role => role.name);
+      console.log("Roles después de map:", roleNames);
+    } catch (error) {
+      console.error("Error obteniendo roles:", error);
+      return res.status(500).json({ error: "Error obteniendo roles del usuario" });
+    }
+    
+    // Crear token JWT (corregido para usar user_id en lugar de id)
+    const token = jwt.sign(
+      { id: user.user_id, username: user.name, roles: roleNames },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: "1h",
+      }
+    );
+    
+    // Responder con el token y mensaje de éxito
+    res.json({ message: "Login exitoso", token });
+  }
 });
 
-// Middleware para verificar si un usuario tiene un rol específico
-function verifyRole(requiredRole) {
-    return (req, res, next) => {
-        if (!req.user || !req.user.roles.includes(requiredRole)) {
-            return res.status(403).json({ error: "Acceso denegado" });
-        }
-        next();
-    };
+// Función para enviar correo de desbloqueo (reutilizando la lógica de reset de contraseña)
+async function sendUnlockEmail(email, userId) {
+  // Generar token único
+  const token = crypto.randomBytes(32).toString("hex");
+  const expirationTime = Date.now() + 30 * 60 * 1000; // Expira en 30 minutos
+
+  // Guardar token (mismo array)
+  passwordResetTokens.push({
+    token,
+    userId,
+    used: false,
+    expires: expirationTime,
+    isUnlockToken: true // Identificar que es un token de desbloqueo
+  });
+
+  // Crear enlace para desbloqueo
+  const unlockLink = `http://localhost:${PORT}/unlock-account?token=${token}`;
+
+  // Configurar mensaje
+  const mailOptions = {
+    from: process.env.EMAIL_USER,
+    to: email,
+    subject: "Desbloqueo de Cuenta",
+    html: `
+       <h2>Tu cuenta ha sido bloqueada</h2>
+       <p>Debido a múltiples intentos fallidos de inicio de sesión, tu cuenta ha sido bloqueada por seguridad.</p>
+       <p>Para desbloquear tu cuenta, haz clic en el siguiente enlace:</p>
+       <a href="${unlockLink}">${unlockLink}</a>
+       <p>Este enlace expira en 30 minutos.</p>
+       <p>Si no has sido tú quien intentó acceder a la cuenta, te recomendamos cambiar tu contraseña una vez desbloquees la cuenta.</p>
+     `
+  };
+
+  // Enviar correo
+  return new Promise((resolve, reject) => {
+    transporter.sendMail(mailOptions, (err, info) => {
+      if (err) {
+        console.error("Error al enviar correo de desbloqueo:", err);
+        reject(err);
+      } else {
+        console.log("Correo de desbloqueo enviado:", info.response);
+        resolve(info);
+      }
+    });
+  });
 }
+
+// Añadir ruta para la página de desbloqueo
+app.get("/unlock-account", (req, res) => {
+  res.sendFile(path.join(__dirname, "..", "public", "unlock-account.html"));
+});
+
+// Añadir ruta para procesar el desbloqueo
+app.post("/unlock-account", async (req, res) => {
+  const { token } = req.body;
+
+  // Buscar el token
+  const storedToken = passwordResetTokens.find(
+    t => t.token === token && t.isUnlockToken === true
+  );
+
+  if (!storedToken) {
+    return res.status(400).json({ error: "Token inválido" });
+  }
+
+  if (storedToken.used) {
+    return res.status(400).json({ error: "El token ya ha sido usado" });
+  }
+
+  if (Date.now() > storedToken.expires) {
+    return res.status(400).json({ error: "El token ha expirado" });
+  }
+
+  try {
+    // Desbloquear la cuenta
+    const unlocked = await unlockAccount(storedToken.userId);
+
+    if (!unlocked) {
+      return res.status(500).json({ error: "Error al desbloquear la cuenta" });
+    }
+
+    // Marcar el token como usado
+    storedToken.used = true;
+
+    res.json({
+      message: "Cuenta desbloqueada correctamente. Ya puedes iniciar sesión."
+    });
+  } catch (error) {
+    console.error("Error al desbloquear cuenta:", error);
+    res.status(500).json({ error: "Error al desbloquear la cuenta" });
+  }
+});
 
 // Ruta protegida para administradores
 app.get("/admin", verifyToken, verifyRole("admin"), (req, res) => {
-    res.json({ message: "Bienvenido al panel de administrador" });
 });
 
 // Ruta de forgot-password
@@ -110,7 +235,7 @@ app.post("/forgot-password", async (req, res) => {
 
   // Generar un token único
   const token = crypto.randomBytes(32).toString("hex");
-  const expirationTime = Date.now() + 15 * 60 * 1000; // Expira en 15 min
+  const expirationTime = Date.now() + 10 * 60 * 1000; // Expira en 15 min
 
   // Guardar el token en la lista temporal
   passwordResetTokens.push({
@@ -128,7 +253,7 @@ app.post("/forgot-password", async (req, res) => {
     subject: "Recuperación de Contraseña",
     html: `<p>Haz clic en el siguiente enlace para restablecer tu contraseña:</p>
                <a href="${resetLink}">${resetLink}</a>
-               <p>Este enlace expira en 15 minutos.</p>`,
+               <p>Este enlace expira en 10 minutos.</p>`,
   };
 
   transporter.sendMail(mailOptions, (err, info) => {
@@ -143,7 +268,6 @@ app.post("/forgot-password", async (req, res) => {
 app.get("/reset-password", (req, res) => {
   res.sendFile(path.join(__dirname, "..", "public", "reset-password.html"));
 });
-
 app.post("/reset-password", async (req, res) => {
   const { token, newPassword } = req.body;
 
@@ -170,12 +294,12 @@ app.post("/reset-password", async (req, res) => {
   }
 
   // Actualizar la contraseña
-  
+
   try {
     // Actualizar en la base de datos
     const hashedPassword = bcrypt.hashSync(newPassword, 10);
-    const passwordUpdateddb = await updateHashPassword(user.user_id, hashedPassword);   
-     console.log("Contraseña actualizada en la BD:", passwordUpdateddb);
+    const passwordUpdateddb = await updateHashPassword(user.user_id, hashedPassword);
+    console.log("Contraseña actualizada en la BD:", passwordUpdateddb);
 
     // Marcar el token como usado
     storedToken.used = true;
@@ -186,23 +310,6 @@ app.post("/reset-password", async (req, res) => {
     res.status(500).json({ error: "Error al actualizar la contraseña" });
   }
 });
-
-// Middleware para verificar token
-function verifyToken(req, res, next) {
-  const token = req.headers["authorization"];
-
-  if (!token) {
-    return res.status(403).json({ error: "Token requerido" });
-  }
-
-  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-    if (err) {
-      return res.status(401).json({ error: "Token inválido" });
-    }
-    req.user = decoded;
-    next();
-  });
-}
 
 // Iniciar servidor
 initializeDatabase().finally(() => {
