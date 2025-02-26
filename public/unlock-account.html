@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Desbloquear Cuenta</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #2c3e50;
+        }
+        .message {
+            padding: 10px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+    </style>
+</head>
+<body>
+    <h1>Desbloquear Cuenta</h1>
+    <p>Tu cuenta ha sido bloqueada por múltiples intentos fallidos de inicio de sesión.</p>
+    <p>Haz clic en el botón a continuación para desbloquear tu cuenta.</p>
+
+    <div id="message" class="message" style="display: none;"></div>
+    
+    <button id="unlockBtn">Desbloquear Cuenta</button>
+    
+    <p id="loginLink" style="display: none;">
+        <a href="/index.html">Volver a la página de inicio de sesión</a>
+    </p>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('token');
+            const unlockBtn = document.getElementById('unlockBtn');
+            const messageEl = document.getElementById('message');
+            const loginLink = document.getElementById('loginLink');
+
+            if (!token) {
+                showMessage('No se encontró un token válido en la URL', 'error');
+                unlockBtn.disabled = true;
+                return;
+            }
+
+            unlockBtn.addEventListener('click', async function() {
+                unlockBtn.disabled = true;
+                unlockBtn.textContent = 'Procesando...';
+
+                try {
+                    const response = await fetch('/unlock-account', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ token })
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        showMessage(data.message, 'success');
+                        unlockBtn.style.display = 'none';
+                        loginLink.style.display = 'block';
+                    } else {
+                        showMessage(data.error, 'error');
+                        unlockBtn.disabled = false;
+                        unlockBtn.textContent = 'Intentar de nuevo';
+                    }
+                } catch (error) {
+                    showMessage('Error de conexión. Inténtalo más tarde.', 'error');
+                    unlockBtn.disabled = false;
+                    unlockBtn.textContent = 'Desbloquear Cuenta';
+                }
+            });
+
+            function showMessage(text, type) {
+                messageEl.textContent = text;
+                messageEl.className = 'message ' + type;
+                messageEl.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,15 +1,15 @@
 const { pool } = require("./connection.js");
 const users = require("./users.js");
-const roles = require("./roles.js"); 
+const roles = require("./roles.js");
 const userRoles = require("./users_roles.js");
 
 const getUsers = async () => {
   try {
     const [result] = await pool.query("SELECT * FROM users");
-    return result;   
+    return result;
   } catch (error) {
     console.error("Error al obtener usuarios:", error);
-    return []; 
+    return [];
   }
 };
 const addUser = async () => {
@@ -46,36 +46,36 @@ const initializeDatabase = async () => {
   // await pool.end(); // Finalizar la conexión
 };
 const updateHashPassword = async (userId, newPasswordHash) => {
-  console.log(`Actualizando contraseña para user_id: ${userId}`); 
+  console.log(`Actualizando contraseña para user_id: ${userId}`);
   console.log(`Nueva contraseña hasheada: ${newPasswordHash}`);
   try {
     const [result] = await pool.query("UPDATE users SET hash_password = ?, update_date = NOW() WHERE user_id = ?",
       [newPasswordHash, userId]
     );
     return result.affectedRows > 0;
-    
+
   } catch (error) {
     console.log("Error al actualizar la contraseña:", error);
     return false;
-    
+
   }
 
 }
 
 async function addRoles() {
   try {
-      for (const role of roles) {
-          // Verificar si el rol ya existe
-          const [rows] = await pool.query("SELECT * FROM roles WHERE name = ?", [role.name]);
+    for (const role of roles) {
+      // Verificar si el rol ya existe
+      const [rows] = await pool.query("SELECT * FROM roles WHERE name = ?", [role.name]);
 
-          if (rows.length === 0) {
-              // Insertar rol si no existe
-              await pool.query("INSERT INTO roles (rol_id, name) VALUES (?,?)", [role.rol_id, role.name]);
-              console.log(`Rol agregado: ${role.name}`);
-          }
+      if (rows.length === 0) {
+        // Insertar rol si no existe
+        await pool.query("INSERT INTO roles (rol_id, name) VALUES (?,?)", [role.rol_id, role.name]);
+        console.log(`Rol agregado: ${role.name}`);
       }
+    }
   } catch (error) {
-      console.error("Error al agregar roles:", error);
+    console.error("Error al agregar roles:", error);
   }
 }
 
@@ -120,4 +120,65 @@ const getUserRoles = async (userId) => {
   }
 };
 
-module.exports = { initializeDatabase, updateHashPassword, getUserRoles, getUsers  };
+const incrementFailedAttempts = async (userId) => {
+  try {
+    const [result] = await pool.query(
+      "UPDATE users SET failed_try = failed_try + 1, update_date = NOW() WHERE user_id = ?",
+      [userId]
+    );
+    return result.affectedRows > 0;
+  } catch (error) {
+    console.error("Error al incrementar intentos fallidos:", error);
+    return false;
+  }
+};
+
+const resetFailedAttempts = async (userId) => {
+  try {
+    const [result] = await pool.query(
+      "UPDATE users SET failed_try = 0, update_date = NOW() WHERE user_id = ?",
+      [userId]
+    );
+    return result.affectedRows > 0;
+  } catch (error) {
+    console.error("Error al restablecer intentos fallidos:", error);
+    return false;
+  }
+};
+
+const blockAccount = async (userId) => {
+  try {
+    const [result] = await pool.query(
+      "UPDATE users SET block = 1, update_date = NOW() WHERE user_id = ?",
+      [userId]
+    );
+    return result.affectedRows > 0;
+  } catch (error) {
+    console.error("Error al bloquear cuenta:", error);
+    return false;
+  }
+};
+
+const unlockAccount = async (userId) => {
+  try {
+    const [result] = await pool.query(
+      "UPDATE users SET block = 0, failed_try = 0, update_date = NOW() WHERE user_id = ?",
+      [userId]
+    );
+    return result.affectedRows > 0;
+  } catch (error) {
+    console.error("Error al desbloquear cuenta:", error);
+    return false;
+  }
+};
+
+module.exports = {
+  initializeDatabase,
+  updateHashPassword,
+  getUserRoles,
+  getUsers,
+  incrementFailedAttempts,
+  resetFailedAttempts,
+  blockAccount,
+  unlockAccount
+};
