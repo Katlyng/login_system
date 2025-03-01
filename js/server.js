@@ -1,5 +1,5 @@
 require("dotenv").config();
-const { logEvent, AUDIT_STATES, getClientIp } = require("./audit.js"); //para cargar las variables de entorno (clase secreta JWT, recomendado incluir puertos)
+const { logEvent, AUDIT_STATES, getClientIp,getUserAuditHistory,getAllAuditLogs } = require("./audit.js"); //para cargar las variables de entorno (clase secreta JWT, recomendado incluir puertos)
 const express = require("express"); //framework para crear aplicaciones web
 const jwt = require("jsonwebtoken"); //para crear y verificar tokens JWT
 const bcrypt = require("bcryptjs"); //para encriptar y comparar contraseñas
