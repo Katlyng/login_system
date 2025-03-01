@@ -1,4 +1,5 @@
-require("dotenv").config(); //para cargar las variables de entorno (clase secreta JWT, recomendado incluir puertos)
+require("dotenv").config();
+const { logEvent, AUDIT_STATES, getClientIp } = require("./audit.js"); //para cargar las variables de entorno (clase secreta JWT, recomendado incluir puertos)
 const express = require("express"); //framework para crear aplicaciones web
 const jwt = require("jsonwebtoken"); //para crear y verificar tokens JWT
 const bcrypt = require("bcryptjs"); //para encriptar y comparar contraseñas
@@ -8,8 +9,17 @@ const bodyParser = require("body-parser"); //para leer datos enviados desde el c
 const nodemailer = require("nodemailer"); //para enviar correos electrónicos
 const crypto = require("crypto"); //para generar tokens aleatorios
 const path = require("path");
-const {   initializeDatabase, updateHashPassword, getUsers, getUserRoles, incrementFailedAttempts, resetFailedAttempts, blockAccount, unlockAccount } = require("../js/mysql.js");
 
+const {
+  initializeDatabase,
+  updateHashPassword,
+  getUsers,
+  getUserRoles,
+  incrementFailedAttempts,
+  resetFailedAttempts,
+  blockAccount,
+  unlockAccount,
+} = require("../js/mysql.js");
 
 const app = express(); //inicializar la aplicación
 const PORT = process.env.PORT || 3000; //puerto del servidor usando la varibale de entorno o por defecto (3000)
@@ -60,19 +70,34 @@ app.get("/index", (req, res) => {
 // Ruta de login
 app.post("/login", async (req, res) => {
   const { username, password } = req.body; //se extraen del cuerpo de la solicitud
-
+  const clientIp = getClientIp(req);
   // Buscar usuario (SELECT)
   const usersList = await getUsers();
   console.log("Lista de usuarios obtenida:", usersList);
   const user = usersList.find((u) => u.name === username);
 
   if (!user) {
+    await logEvent(
+      null,
+      AUDIT_STATES.LOGIN_FAILED,
+      `Intento de inicio de sesión con usuario inexistente: ${username}`,
+      clientIp
+    );
     return res.status(401).json({ error: "Usuario o contraseña incorrectos" });
   }
 
   //verificar si la cuenta está bloqueada
   if (user.blocked === 1) {
-    return res.status(403).json({ error: "Cuenta bloqueada por múltiples intentos fallidos. Revisa tu correo para desbloquearla." });
+    await logEvent(
+      user.user_id,
+      AUDIT_STATES.LOGIN_FAILED,
+      "Intento de inicio de sesión en cuenta bloqueada",
+      clientIp
+    );
+    return res.status(403).json({
+      error:
+        "Cuenta bloqueada por múltiples intentos fallidos. Revisa tu correo para desbloquearla.",
+    });
   }
 
   // Comparar la contraseña ingresada con el hash almacenado
@@ -81,37 +106,61 @@ app.post("/login", async (req, res) => {
   if (!isMatch) {
     // Incrementar contador de intentos fallidos
     await incrementFailedAttempts(user.user_id);
-    
+
     //volver a obtener usuario actualizado
-    const updatedUser = (await getUsers()).find((u) => u.user_id === user.user_id);
-    
+    const updatedUser = (await getUsers()).find(
+      (u) => u.user_id === user.user_id
+    );
+
+    await logEvent(
+      user.user_id,
+      AUDIT_STATES.LOGIN_FAILED,
+      `Contraseña incorrecta. Intento ${updatedUser.failed_try} de 5`,
+      clientIp
+    );
+
     //verificar si se alcanzó el límite de intentos
     if (updatedUser.failed_try >= 5) {
       //bloquear cuenta
       await blockAccount(user.user_id);
       //enviar correo de desbloqueo
       await sendUnlockEmail(user.email, user.user_id);
-      
-      return res.status(403).json({ error: "Cuenta bloqueada por múltiples intentos fallidos. Se ha enviado un correo para desbloquearla." });
+      await logEvent(
+        user.user_id,
+        AUDIT_STATES.ACCOUNT_BLOCKED,
+        "Cuenta bloqueada por exceder número máximo de intentos fallidos",
+        clientIp
+      );
+
+      return res.status(403).json({
+        error:
+          "Cuenta bloqueada por múltiples intentos fallidos. Se ha enviado un correo para desbloquearla.",
+      });
     }
-    
-    return res.status(401).json({ error: `Usuario o contraseña incorrectos. Intentos restantes: ${5 - updatedUser.failed_try}` });
+
+    return res.status(401).json({
+      error: `Usuario o contraseña incorrectos. Intentos restantes: ${
+        5 - updatedUser.failed_try
+      }`,
+    });
   } else {
     // Si la contraseña es correcta, restablecer contador de intentos fallidos
     await resetFailedAttempts(user.user_id);
-    
+
     // Obtener roles del usuario
     let roleNames = [];
     try {
       const roles = await getUserRoles(user.user_id); // Obtener roles desde la BD
       console.log("Datos crudos de roles obtenidos:", roles);
-      roleNames = roles.map(role => role.name);
+      roleNames = roles.map((role) => role.name);
       console.log("Roles después de map:", roleNames);
     } catch (error) {
       console.error("Error obteniendo roles:", error);
-      return res.status(500).json({ error: "Error obteniendo roles del usuario" });
+      return res
+        .status(500)
+        .json({ error: "Error obteniendo roles del usuario" });
     }
-    
+
     // Crear token JWT (corregido para usar user_id en lugar de id)
     const token = jwt.sign(
       { id: user.user_id, username: user.name, roles: roleNames },
@@ -120,7 +169,14 @@ app.post("/login", async (req, res) => {
         expiresIn: "1h",
       }
     );
-    
+    // Registrar inicio de sesión exitoso en auditoría
+    await logEvent(
+      user.user_id,
+      AUDIT_STATES.LOGIN_SUCCESS,
+      `Inicio de sesión exitoso. Usuario: ${user.name}`,
+      clientIp
+    );
+
     // Responder con el token y mensaje de éxito
     res.json({ message: "Login exitoso", token });
   }
@@ -138,7 +194,7 @@ async function sendUnlockEmail(email, userId) {
     userId,
     used: false,
     expires: expirationTime,
-    isUnlockToken: true // Identificar que es un token de desbloqueo
+    isUnlockToken: true, // Identificar que es un token de desbloqueo
   });
 
   // Crear enlace para desbloqueo
@@ -156,7 +212,7 @@ async function sendUnlockEmail(email, userId) {
        <a href="${unlockLink}">${unlockLink}</a>
        <p>Este enlace expira en 30 minutos.</p>
        <p>Si no has sido tú quien intentó acceder a la cuenta, te recomendamos cambiar tu contraseña una vez desbloquees la cuenta.</p>
-     `
+     `,
   };
 
   // Enviar correo
@@ -181,10 +237,10 @@ app.get("/unlock-account", (req, res) => {
 // Añadir ruta para procesar el desbloqueo
 app.post("/unlock-account", async (req, res) => {
   const { token } = req.body;
-
+  const clientIp = getClientIp(req);
   // Buscar el token
   const storedToken = passwordResetTokens.find(
-    t => t.token === token && t.isUnlockToken === true
+    (t) => t.token === token && t.isUnlockToken === true
   );
 
   if (!storedToken) {
@@ -210,8 +266,16 @@ app.post("/unlock-account", async (req, res) => {
     // Marcar el token como usado
     storedToken.used = true;
 
+    // Registrar desbloqueo en auditoría
+    await logEvent(
+      storedToken.userId,
+      AUDIT_STATES.ACCOUNT_UNLOCKED,
+      "Cuenta desbloqueada mediante token enviado por correo",
+      clientIp
+    );
+
     res.json({
-      message: "Cuenta desbloqueada correctamente. Ya puedes iniciar sesión."
+      message: "Cuenta desbloqueada correctamente. Ya puedes iniciar sesión.",
     });
   } catch (error) {
     console.error("Error al desbloquear cuenta:", error);
@@ -220,12 +284,12 @@ app.post("/unlock-account", async (req, res) => {
 });
 
 // Ruta protegida para administradores
-app.get("/admin", verifyToken, verifyRole("admin"), (req, res) => {
-});
+app.get("/admin", verifyToken, verifyRole("admin"), (req, res) => {});
 
 // Ruta de forgot-password
 app.post("/forgot-password", async (req, res) => {
   const { email } = req.body;
+  const clientIp = getClientIp(req);
   const usersList = await getUsers();
   const user = usersList.find((u) => u.email === email);
 
@@ -244,6 +308,12 @@ app.post("/forgot-password", async (req, res) => {
     used: false,
     expires: expirationTime,
   });
+  await logEvent(
+    user.user_id,
+    AUDIT_STATES.PASSWORD_RESET_REQUEST,
+    "Solicitud de restablecimiento de contraseña",
+    clientIp
+  );
 
   // Enviar correo con el enlace de recuperación
   const resetLink = `http://localhost:3000/reset-password?token=${token}`;
@@ -270,7 +340,7 @@ app.get("/reset-password", (req, res) => {
 });
 app.post("/reset-password", async (req, res) => {
   const { token, newPassword } = req.body;
-
+  const clientIp = getClientIp(req);
   // Buscar el token
   const storedToken = passwordResetTokens.find((t) => t.token === token);
 
@@ -298,16 +368,70 @@ app.post("/reset-password", async (req, res) => {
   try {
     // Actualizar en la base de datos
     const hashedPassword = bcrypt.hashSync(newPassword, 10);
-    const passwordUpdateddb = await updateHashPassword(user.user_id, hashedPassword);
+    const passwordUpdateddb = await updateHashPassword(
+      user.user_id,
+      hashedPassword
+    );
     console.log("Contraseña actualizada en la BD:", passwordUpdateddb);
 
     // Marcar el token como usado
     storedToken.used = true;
 
+    await logEvent(
+      user.user_id,
+      AUDIT_STATES.PASSWORD_RESET_SUCCESS,
+      "Contraseña restablecida exitosamente",
+      clientIp
+    );
+
     res.json({ message: "Contraseña actualizada correctamente" });
   } catch (error) {
     console.error("Error al actualizar la contraseña:", error);
     res.status(500).json({ error: "Error al actualizar la contraseña" });
+  }
+});
+
+// Ruta protegida para ver logs de auditoría (solo admin)
+app.get("/audit-logs", verifyToken, verifyRole("admin"), async (req, res) => {
+  try {
+    const { limit = 100, offset = 0, userId } = req.query;
+
+    let auditLogs;
+    if (userId) {
+      // Si se proporciona un userId, filtrar por ese usuario
+      auditLogs = await getUserAuditHistory(userId);
+    } else {
+      // Si no, obtener todos los logs (con paginación)
+      auditLogs = await getAllAuditLogs(parseInt(limit), parseInt(offset));
+    }
+
+    res.json({
+      total: auditLogs.length,
+      data: auditLogs,
+    });
+  } catch (error) {
+    console.error("Error al obtener logs de auditoría:", error);
+    res
+      .status(500)
+      .json({ error: "Error al consultar los registros de auditoría" });
+  }
+});
+
+// Ruta para que un usuario vea su propio historial de auditoría
+app.get("/my-audit-history", verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const auditLogs = await getUserAuditHistory(userId);
+
+    res.json({
+      total: auditLogs.length,
+      data: auditLogs,
+    });
+  } catch (error) {
+    console.error("Error al obtener historial de auditoría:", error);
+    res
+      .status(500)
+      .json({ error: "Error al consultar tu historial de actividad" });
   }
 });
 

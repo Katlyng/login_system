@@ -1,6 +1,7 @@
 const { pool } = require("./connection.js");
 const users = require("./users.js");
 const roles = require("./roles.js");
+const { logEvent, AUDIT_STATES } = require("./audit.js");
 const userRoles = require("./users_roles.js");
 
 const getUsers = async () => {
@@ -31,6 +32,13 @@ const addUser = async () => {
         [user.id, user.username, user.email, user.password]
       );
       console.log(result);
+
+      await logEvent(
+        user.id,
+        AUDIT_STATES.USER_REGISTERED,
+        `Nuevo usuario registrado: ${user.username} (${user.email})`,
+        null // No hay IP disponible durante la inicialización
+      );
     }
   } catch (error) {
     console.log(error);
@@ -49,28 +57,31 @@ const updateHashPassword = async (userId, newPasswordHash) => {
   console.log(`Actualizando contraseña para user_id: ${userId}`);
   console.log(`Nueva contraseña hasheada: ${newPasswordHash}`);
   try {
-    const [result] = await pool.query("UPDATE users SET hash_password = ?, update_date = NOW() WHERE user_id = ?",
+    const [result] = await pool.query(
+      "UPDATE users SET hash_password = ?, update_date = NOW() WHERE user_id = ?",
       [newPasswordHash, userId]
     );
     return result.affectedRows > 0;
-
   } catch (error) {
     console.log("Error al actualizar la contraseña:", error);
     return false;
-
   }
-
-}
+};
 
 async function addRoles() {
   try {
     for (const role of roles) {
       // Verificar si el rol ya existe
-      const [rows] = await pool.query("SELECT * FROM roles WHERE name = ?", [role.name]);
+      const [rows] = await pool.query("SELECT * FROM roles WHERE name = ?", [
+        role.name,
+      ]);
 
       if (rows.length === 0) {
         // Insertar rol si no existe
-        await pool.query("INSERT INTO roles (rol_id, name) VALUES (?,?)", [role.rol_id, role.name]);
+        await pool.query("INSERT INTO roles (rol_id, name) VALUES (?,?)", [
+          role.rol_id,
+          role.name,
+        ]);
         console.log(`Rol agregado: ${role.name}`);
       }
     }
@@ -88,12 +99,17 @@ const addUserRoles = async () => {
 
       try {
         // Intentar insertar la relación usuario-rol
-        await pool.query("INSERT INTO users_roles (user_id, rol_id) VALUES (?, ?)", [user_id, rol_id]);
+        await pool.query(
+          "INSERT INTO users_roles (user_id, rol_id) VALUES (?, ?)",
+          [user_id, rol_id]
+        );
         console.log(`Rol ${rol_id} asignado al usuario ${user_id}`);
       } catch (error) {
         // Si el error es por clave duplicada (código 1062), ignorarlo y continuar
         if (error.code === "ER_DUP_ENTRY") {
-          console.log(`El usuario ${user_id} ya tiene el rol ${rol_id}, omitiendo...`);
+          console.log(
+            `El usuario ${user_id} ya tiene el rol ${rol_id}, omitiendo...`
+          );
           continue;
         }
         // Si es otro error, lanzarlo
@@ -180,5 +196,5 @@ module.exports = {
   incrementFailedAttempts,
   resetFailedAttempts,
   blockAccount,
-  unlockAccount
+  unlockAccount,
 };
