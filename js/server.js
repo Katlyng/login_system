@@ -417,23 +417,6 @@ app.get("/audit-logs", verifyToken, verifyRole("admin"), async (req, res) => {
   }
 });
 
-// Ruta para que un usuario vea su propio historial de auditoría
-app.get("/my-audit-history", verifyToken, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const auditLogs = await getUserAuditHistory(userId);
-
-    res.json({
-      total: auditLogs.length,
-      data: auditLogs,
-    });
-  } catch (error) {
-    console.error("Error al obtener historial de auditoría:", error);
-    res
-      .status(500)
-      .json({ error: "Error al consultar tu historial de actividad" });
-  }
-});
 
 // Iniciar servidor
 initializeDatabase().finally(() => {
