@@ -75,9 +75,9 @@
                     }
                     if (roles.includes("user")) {
                     window.location.href = "user.html";
-                } else {
-                    window.location.href = "admin.html";
-                }
+                    } else {
+                        window.location.href = "admin.html";
+                    }
                 }
             } catch (error) {
                 console.error("Error en la solicitud:", error);
@@ -90,8 +90,7 @@
             // Guardar el email en sessionStorage para usarlo en la página de desbloqueo
             if (blockedAccountEmail) {
                 sessionStorage.setItem("blockedAccountEmail", blockedAccountEmail);
-            }
-            
+            }            
             // Redirigir a la página de solicitud de desbloqueo
             window.location.href = "request-unlock.html";
         }
