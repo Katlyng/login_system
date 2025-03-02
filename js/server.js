@@ -1,5 +1,11 @@
 require("dotenv").config();
-const { logEvent, AUDIT_STATES, getClientIp,getUserAuditHistory,getAllAuditLogs } = require("./audit.js"); //para cargar las variables de entorno (clase secreta JWT, recomendado incluir puertos)
+const {
+  logEvent,
+  AUDIT_STATES,
+  getClientIp,
+  getUserAuditHistory,
+  getAllAuditLogs,
+} = require("./audit.js"); //para cargar las variables de entorno (clase secreta JWT, recomendado incluir puertos)
 const express = require("express"); //framework para crear aplicaciones web
 const jwt = require("jsonwebtoken"); //para crear y verificar tokens JWT
 const bcrypt = require("bcryptjs"); //para encriptar y comparar contraseñas
@@ -392,10 +398,12 @@ app.post("/reset-password", async (req, res) => {
 });
 
 // Ruta protegida para ver logs de auditoría (solo admin)
+// Corrige esta parte en la ruta /audit-logs en server.js
 app.get("/audit-logs", verifyToken, verifyRole("admin"), async (req, res) => {
   try {
-    const { limit = 100, offset = 0, userId } = req.query;
+    const { limit = 100, offset = 0, userId, state} = req.query;
 
+    // Obtener todos los logs primero
     let auditLogs;
     if (userId) {
       // Si se proporciona un userId, filtrar por ese usuario
@@ -403,6 +411,11 @@ app.get("/audit-logs", verifyToken, verifyRole("admin"), async (req, res) => {
     } else {
       // Si no, obtener todos los logs (con paginación)
       auditLogs = await getAllAuditLogs(parseInt(limit), parseInt(offset));
+    }
+
+    // Aplicar filtro de estado si se proporciona
+    if (state) {
+      auditLogs = auditLogs.filter((log) => log.state === state);
     }
 
     res.json({
@@ -416,7 +429,6 @@ app.get("/audit-logs", verifyToken, verifyRole("admin"), async (req, res) => {
       .json({ error: "Error al consultar los registros de auditoría" });
   }
 });
-
 
 // Iniciar servidor
 initializeDatabase().finally(() => {
