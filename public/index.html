@@ -7,6 +7,11 @@
     <title>Login</title>
     <link rel="stylesheet" href="style.css">
 </head>
+<style>
+    .hr{
+        color: #155724;
+    }
+</style>
 
 <body>
     <div class="container">
@@ -15,7 +20,7 @@
         <input type="password" id="password" placeholder="Contraseña">
         <button onclick="login()">Ingresar</button>
         <p id="message"></p>
-        <a href="forgot-password.html">¿Olvidaste tu contraseña?</a>
+        <a class="hr" href="forgot-password.html">¿Olvidaste tu contraseña?</a>
     </div>
 
     <!-- <script>
@@ -57,12 +62,19 @@
                 const payload = JSON.parse(atob(data.token.split(".")[1]));
                 const roles = payload.roles || [];
 
+                if (roles.includes("user")) {
+                    window.location.href = "user.html";
+                } else {
+                    window.location.href = "admin.html";
+                }
+
                 // Si el usuario es admin, redirigirlo al panel de admin
                 if (roles.includes("admin")) {
                     window.location.href = "admin.html";
                 } else {
-                    alert("Inicio de sesión exitoso, pero no tienes acceso de administrador.");
+                    window.location.href = "user.html";
                 }
+               
             }
         }
 
