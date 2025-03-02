@@ -67,7 +67,7 @@ function verifyRole(requiredRole) {
 app.get("/index", (req, res) => {
   res.sendFile(__dirname + "/public/index.html"); // Asegúrate de que el archivo exista
 });
-// Ruta de login
+// Ruta de login (modificada)
 app.post("/login", async (req, res) => {
   const { username, password } = req.body; //se extraen del cuerpo de la solicitud
   const clientIp = getClientIp(req);
@@ -87,7 +87,7 @@ app.post("/login", async (req, res) => {
   }
 
   //verificar si la cuenta está bloqueada
-  if (user.blocked === 1) {
+  if (user.block === 1) {
     await logEvent(
       user.user_id,
       AUDIT_STATES.LOGIN_FAILED,
@@ -95,8 +95,9 @@ app.post("/login", async (req, res) => {
       clientIp
     );
     return res.status(403).json({
-      error:
-        "Cuenta bloqueada por múltiples intentos fallidos. Revisa tu correo para desbloquearla.",
+      error: "Cuenta bloqueada por múltiples intentos fallidos. Revisa tu correo para desbloquearla.",
+      accountBlocked: true,  // Flag para indicar que la cuenta está bloqueada
+      email: user.email      // Enviar el email para facilitar la solicitud de desbloqueo
     });
   }
 
@@ -133,8 +134,9 @@ app.post("/login", async (req, res) => {
       );
 
       return res.status(403).json({
-        error:
-          "Cuenta bloqueada por múltiples intentos fallidos. Se ha enviado un correo para desbloquearla.",
+        error: "Cuenta bloqueada por múltiples intentos fallidos. Se ha enviado un correo para desbloquearla.",
+        accountBlocked: true,  // Flag para indicar que la cuenta está bloqueada
+        email: user.email      // Enviar el email para facilitar la solicitud de desbloqueo
       });
     }
 
@@ -144,7 +146,28 @@ app.post("/login", async (req, res) => {
       }`,
     });
   } else {
-    // Si la contraseña es correcta, restablecer contador de intentos fallidos
+    // IMPORTANTE: Verificar nuevamente si la cuenta está bloqueada antes de permitir el login
+    // Obtener el usuario actualizado para verificar su estado actual
+    const currentUser = (await getUsers()).find(
+      (u) => u.user_id === user.user_id
+    );
+    
+    // Si la cuenta está bloqueada, no permitir el acceso incluso con contraseña correcta
+    if (currentUser.blocked === 1) {
+      await logEvent(
+        user.user_id,
+        AUDIT_STATES.LOGIN_FAILED,
+        "Intento de inicio de sesión con contraseña correcta en cuenta bloqueada",
+        clientIp
+      );
+      return res.status(403).json({
+        error: "Cuenta bloqueada por múltiples intentos fallidos. Revisa tu correo para desbloquearla.",
+        accountBlocked: true,  // Flag para indicar que la cuenta está bloqueada
+        email: user.email      // Enviar el email para facilitar la solicitud de desbloqueo
+      });
+    }
+    
+    // Si la contraseña es correcta y la cuenta no está bloqueada, restablecer contador de intentos fallidos
     await resetFailedAttempts(user.user_id);
 
     // Obtener roles del usuario
@@ -233,7 +256,6 @@ async function sendUnlockEmail(email, userId) {
 app.get("/unlock-account", (req, res) => {
   res.sendFile(path.join(__dirname, "..", "public", "unlock-account.html"));
 });
-
 // Añadir ruta para procesar el desbloqueo
 app.post("/unlock-account", async (req, res) => {
   const { token } = req.body;
@@ -285,6 +307,31 @@ app.post("/unlock-account", async (req, res) => {
 
 // Ruta protegida para administradores
 app.get("/admin", verifyToken, verifyRole("admin"), (req, res) => {});
+// Ruta protegida para ver logs de auditoría (solo admin)
+app.get("/audit-logs", verifyToken, verifyRole("admin"), async (req, res) => {
+  try {
+    const { limit = 100, offset = 0, userId } = req.query;
+
+    let auditLogs;
+    if (userId) {
+      // Si se proporciona un userId, filtrar por ese usuario
+      auditLogs = await getUserAuditHistory(userId);
+    } else {
+      // Si no, obtener todos los logs (con paginación)
+      auditLogs = await getAllAuditLogs(parseInt(limit), parseInt(offset));
+    }
+
+    res.json({
+      total: auditLogs.length,
+      data: auditLogs,
+    });
+  } catch (error) {
+    console.error("Error al obtener logs de auditoría:", error);
+    res
+      .status(500)
+      .json({ error: "Error al consultar los registros de auditoría" });
+  }
+});
 
 // Ruta de forgot-password
 app.post("/forgot-password", async (req, res) => {
@@ -391,32 +438,53 @@ app.post("/reset-password", async (req, res) => {
   }
 });
 
-// Ruta protegida para ver logs de auditoría (solo admin)
-app.get("/audit-logs", verifyToken, verifyRole("admin"), async (req, res) => {
+// Añadir una página HTML para solicitar desbloqueo de cuenta
+app.get("/request-unlock", (req, res) => {
+  res.sendFile(path.join(__dirname, "..", "public", "request-unlock.html"));
+});
+// Ruta para solicitar un nuevo token de desbloqueo
+app.post("/request-unlock", async (req, res) => {
+  const { email } = req.body;
+  const clientIp = getClientIp(req);
+  
+  // Buscar usuario por email
+  const usersList = await getUsers();
+  const user = usersList.find((u) => u.email === email);
+
+  if (!user) {
+    // No revelar si el email existe o no por seguridad
+    return res.json({ 
+      message: "Si el correo existe y la cuenta está bloqueada, recibirás instrucciones para desbloquearla" 
+    });
+  }
+
+  // Verificar si la cuenta está realmente bloqueada
+  if (user.block !== 1) {
+    // Si la cuenta no está bloqueada, informar al usuario pero sin revelar detalles
+    return res.json({ 
+      message: "Si el correo existe y la cuenta está bloqueada, recibirás instrucciones para desbloquearla" 
+    });
+  }
+
+  // Generar y enviar un nuevo token de desbloqueo
   try {
-    const { limit = 100, offset = 0, userId } = req.query;
+    await sendUnlockEmail(user.email, user.user_id);
+    
+    await logEvent(
+      user.user_id,
+      AUDIT_STATES.UNLOCK_TOKEN_REQUESTED,
+      "Nuevo token de desbloqueo solicitado",
+      clientIp
+    );
 
-    let auditLogs;
-    if (userId) {
-      // Si se proporciona un userId, filtrar por ese usuario
-      auditLogs = await getUserAuditHistory(userId);
-    } else {
-      // Si no, obtener todos los logs (con paginación)
-      auditLogs = await getAllAuditLogs(parseInt(limit), parseInt(offset));
-    }
-
-    res.json({
-      total: auditLogs.length,
-      data: auditLogs,
+    res.json({ 
+      message: "Si el correo existe y la cuenta está bloqueada, recibirás instrucciones para desbloquearla" 
     });
   } catch (error) {
-    console.error("Error al obtener logs de auditoría:", error);
-    res
-      .status(500)
-      .json({ error: "Error al consultar los registros de auditoría" });
+    console.error("Error al enviar correo de desbloqueo:", error);
+    res.status(500).json({ error: "Error al procesar la solicitud" });
   }
 });
-
 
 // Iniciar servidor
 initializeDatabase().finally(() => {

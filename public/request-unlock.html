@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solicitar Desbloqueo de Cuenta</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="container">
+        <h2>Solicitar Desbloqueo</h2>
+        <p>Ingresa tu correo electrónico para recibir un nuevo enlace de desbloqueo.</p>
+        
+        <input type="email" id="email" placeholder="Correo Electrónico">
+        <button onclick="requestUnlock()">Enviar</button>
+        
+        <p id="message"></p>
+        <a href="index.html">Volver al inicio</a>
+    </div>
+    
+    <script>
+        // Al cargar la página, verificar si hay un email en sessionStorage
+        document.addEventListener('DOMContentLoaded', function() {
+            const blockedEmail = sessionStorage.getItem('blockedAccountEmail');
+            
+            if (blockedEmail) {
+                document.getElementById('email').value = blockedEmail;
+                // Limpiar el sessionStorage después de usarlo
+                sessionStorage.removeItem('blockedAccountEmail');
+            }
+        });
+        
+        async function requestUnlock() {
+            const email = document.getElementById("email").value;
+            const messageElement = document.getElementById("message");
+            
+            if (!email) {
+                messageElement.innerText = "Por favor, ingresa tu correo electrónico.";
+                return;
+            }
+            
+            try {
+                const response = await fetch("/request-unlock", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email })
+                });
+                
+                const data = await response.json();
+                messageElement.innerText = data.message || data.error;
+                
+            } catch (error) {
+                console.error("Error en la solicitud:", error);
+                messageElement.innerText = "Error de conexión al servidor.";
+            }
+        }
+    </script>
+</body>
+
+</html>

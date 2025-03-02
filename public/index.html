@@ -15,55 +15,75 @@
         <input type="password" id="password" placeholder="Contraseña">
         <button onclick="login()">Ingresar</button>
         <p id="message"></p>
+        <div id="unlock-container" style="display: none;">
+            <button id="unlock-button" onclick="redirectToUnlock()">Reenviar correo de desbloqueo</button>
+        </div>
         <a href="forgot-password.html">¿Olvidaste tu contraseña?</a>
     </div>
+    
+    <script>
+        // Variable para almacenar el email cuando la cuenta está bloqueada
+        let blockedAccountEmail = '';
 
-    <!-- <script>
         async function login() {
             const username = document.getElementById("username").value;
             const password = document.getElementById("password").value;
-            const response = await fetch("/login", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ username, password })
-            });
+            const messageElement = document.getElementById("message");
+            const unlockContainer = document.getElementById("unlock-container");
 
-            const data = await response.json();
-            document.getElementById("message").innerText = data.message || data.error;
+            // Ocultar el botón de desbloqueo al iniciar un nuevo intento
+            unlockContainer.style.display = "none";
             
-            if (response.ok) {
-                localStorage.setItem("token", data.token);
+            try {
+                const response = await fetch("/login", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+                messageElement.innerText = data.message || data.error;
+
+                // Verificar si la cuenta está bloqueada
+                if (response.status === 403 && data.accountBlocked) {
+                    // Guardar el email si está disponible
+                    if (data.email) {
+                        blockedAccountEmail = data.email;
+                    }
+                    
+                    // Mostrar el botón de desbloqueo
+                    unlockContainer.style.display = "block";
+                }
+
+                if (response.ok) {
+                    localStorage.setItem("token", data.token);
+
+                    // Decodificar el token para obtener los roles
+                    const payload = JSON.parse(atob(data.token.split(".")[1]));
+                    const roles = payload.roles || [];
+
+                    // Si el usuario es admin, redirigirlo al panel de admin
+                    if (roles.includes("admin")) {
+                        window.location.href = "admin.html";
+                    } else {
+                        alert("Inicio de sesión exitoso, pero no tienes acceso de administrador.");
+                    }
+                }
+            } catch (error) {
+                console.error("Error en la solicitud:", error);
+                messageElement.innerText = "Error de conexión al servidor.";
             }
         }
-    </script> -->
-    <script>
-        async function login() {
-            const username = document.getElementById("username").value;
-            const password = document.getElementById("password").value;
 
-            const response = await fetch("/login", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ username, password })
-            });
-
-            const data = await response.json();
-            document.getElementById("message").innerText = data.message || data.error;
-
-            if (response.ok) {
-                localStorage.setItem("token", data.token);
-
-                // Decodificar el token para obtener los roles
-                const payload = JSON.parse(atob(data.token.split(".")[1]));
-                const roles = payload.roles || [];
-
-                // Si el usuario es admin, redirigirlo al panel de admin
-                if (roles.includes("admin")) {
-                    window.location.href = "admin.html";
-                } else {
-                    alert("Inicio de sesión exitoso, pero no tienes acceso de administrador.");
-                }
+        // Función para redirigir a la página de desbloqueo
+        function redirectToUnlock() {
+            // Guardar el email en sessionStorage para usarlo en la página de desbloqueo
+            if (blockedAccountEmail) {
+                sessionStorage.setItem("blockedAccountEmail", blockedAccountEmail);
             }
+            
+            // Redirigir a la página de solicitud de desbloqueo
+            window.location.href = "request-unlock.html";
         }
 
         // Función para acceder a la página de admin con el token
@@ -77,7 +97,7 @@
 
             const response = await fetch("/admin", {
                 method: "GET",
-                headers: { "Authorization": `Bearer ${token}` }
+                headers: { "Authorization": token }
             });
 
             const data = await response.json();
