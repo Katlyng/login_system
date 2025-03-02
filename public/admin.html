@@ -6,12 +6,44 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Panel de Administrador</title>
 </head>
+<style>
+    body {
+    font-family: Arial, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background-color: #f4f4f4;
+    }
+    .container {
+    width: 400px;  /* Tamaño fijo */
+    height: 250px; /* Tamaño fijo */
+    background: white;
+    padding: 45px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    text-align: center;
+    border: 1px solid #5d6165;
+}
+    .title{
+        background-color: #155724;
+        color: white;
+    }
+    .p{
+        color: #155724;
+    }
+</style>
 
 <body>
-    <h1>Bienvenido al Panel de Control</h1>
+    <div class="container">
+    <h1 class="title">Bienvenido al Panel de Control</h1>
+    <br>
+    <p class="p">Accede al control de auditoria</p>
     <button onclick="auditAdmin()">Auditoria</button>
     <p id="mensaje"></p>
-
+        
+    </div>
+    
     <script>
         async function auditAdmin() {
             const token = localStorage.getItem("token"); // Obtener token guardado en el login
