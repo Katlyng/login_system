@@ -1,5 +1,11 @@
 require("dotenv").config();
-const { logEvent, AUDIT_STATES, getClientIp,getUserAuditHistory,getAllAuditLogs } = require("./audit.js"); //para cargar las variables de entorno (clase secreta JWT, recomendado incluir puertos)
+const {
+  logEvent,
+  AUDIT_STATES,
+  getClientIp,
+  getUserAuditHistory,
+  getAllAuditLogs,
+} = require("./audit.js"); //para cargar las variables de entorno (clase secreta JWT, recomendado incluir puertos)
 const express = require("express"); //framework para crear aplicaciones web
 const jwt = require("jsonwebtoken"); //para crear y verificar tokens JWT
 const bcrypt = require("bcryptjs"); //para encriptar y comparar contraseñas
@@ -479,6 +485,37 @@ app.post("/request-unlock", async (req, res) => {
 
     res.json({ 
       message: "Si el correo existe y la cuenta está bloqueada, recibirás instrucciones para desbloquearla" 
+    });
+  }
+  catch (error) {
+    console.error("Error al solicitar desbloqueo:", error);
+    res.status(500).json({ error: "Error al solicitar desbloqueo de cuenta" });
+  }
+});
+
+// Ruta protegida para ver logs de auditoría (solo admin)
+app.get("/audit-logs", verifyToken, verifyRole("admin"), async (req, res) => {
+  try {
+    const { limit = 100, offset = 0, userId, state} = req.query;
+
+    // Obtener todos los logs primero
+    let auditLogs;
+    if (userId) {
+      // Si se proporciona un userId, filtrar por ese usuario
+      auditLogs = await getUserAuditHistory(userId);
+    } else {
+      // Si no, obtener todos los logs (con paginación)
+      auditLogs = await getAllAuditLogs(parseInt(limit), parseInt(offset));
+    }
+
+    // Aplicar filtro de estado si se proporciona
+    if (state) {
+      auditLogs = auditLogs.filter((log) => log.state === state);
+    }
+
+    res.json({
+      total: auditLogs.length,
+      data: auditLogs,
     });
   } catch (error) {
     console.error("Error al enviar correo de desbloqueo:", error);
