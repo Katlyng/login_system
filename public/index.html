@@ -7,6 +7,11 @@
     <title>Login</title>
     <link rel="stylesheet" href="style.css">
 </head>
+<style>
+    .hr{
+        color: #155724;
+    }
+</style>
 
 <body>
     <div class="container">
@@ -66,8 +71,13 @@
                     if (roles.includes("admin")) {
                         window.location.href = "admin.html";
                     } else {
-                        alert("Inicio de sesión exitoso, pero no tienes acceso de administrador.");
+                        window.location.href = "user.html";
                     }
+                    if (roles.includes("user")) {
+                    window.location.href = "user.html";
+                } else {
+                    window.location.href = "admin.html";
+                }
                 }
             } catch (error) {
                 console.error("Error en la solicitud:", error);
