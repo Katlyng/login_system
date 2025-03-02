@@ -1,17 +1,19 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Panel de Administrador</title>
 </head>
+
 <body>
     <h1>Bienvenido al Panel de Control</h1>
-    <button onclick="accederAdmin()">Acceder</button>
+    <button onclick="auditAdmin()">Auditoria</button>
     <p id="mensaje"></p>
 
     <script>
-        async function accederAdmin() {
+        async function auditAdmin() {
             const token = localStorage.getItem("token"); // Obtener token guardado en el login
             if (!token) {
                 document.getElementById("mensaje").textContent = "No tienes un token válido.";
@@ -19,18 +21,20 @@
             }
 
             try {
-                const response = await fetch("/admin", {
-                    method: "GET",
-                    headers: {
-                        "Authorization": "Bearer " + token,
-                        "Content-Type": "application/json"
-                    }
-                });
-                
-                const data = await response.json();
-                document.getElementById("mensaje").textContent = data.message || "Acceso concedido";
+                // Guardar el token en el formato correcto para audit.html
+                // Nota: audit.html usa el token directamente como 'Authorization' sin añadir 'Bearer'
+                localStorage.setItem("authToken", token);
+
+                // Muestra un mensaje de éxito
+                document.getElementById("mensaje").textContent = "Acceso concedido. Redirigiendo...";
+
+                // Pequeña pausa para mostrar el mensaje
+                setTimeout(() => {
+                    window.location.href = "audit.html";
+                }, 1000);
             } catch (error) {
                 document.getElementById("mensaje").textContent = "Error al acceder al panel de administrador.";
+                console.error(error);
             }
         }
     </script>

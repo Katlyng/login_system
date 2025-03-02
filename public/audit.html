@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registros de Auditoría</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .audit-table {
+            font-size: 0.9rem;
+        }
+
+        .filter-section {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container mt-4">
+        <h1>Sistema de Auditoría</h1>
+
+        <div class="filter-section">
+            <h4>Filtros</h4>
+            <div class="row">
+                <div class="col-md-3">
+                    <label for="userFilter">Usuario:</label>
+                    <input type="text" id="userFilter" class="form-control">
+                </div>
+                <div class="col-md-3">
+                    <label for="stateFilter">Estado:</label>
+                    <select id="stateFilter" class="form-select">
+                        <option value="">Todos</option>
+                        <!-- <option value="LOGIN_SUCCESS">Inicio de sesión exitoso</option>
+                        <option value="LOGIN_FAILED">Inicio de sesión fallido</option>
+                        <option value="ACCOUNT_BLOCKED">Cuenta bloqueada</option>
+                        <option value="ACCOUNT_UNLOCKED">Cuenta desbloqueada</option>
+                        <option value="PASSWORD_RESET_REQUEST">Solicitud de reseteo</option>
+                        <option value="PASSWORD_RESET_SUCCESS">Reseteo exitoso</option>
+                        <option value="USER_REGISTERED">Usuario registrado</option> -->
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="dateFilter">Fecha:</label>
+                    <input type="date" id="dateFilter" class="form-control">
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button id="applyFilter" class="btn btn-primary mb-0">Aplicar Filtros</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-striped audit-table">
+                <thead>
+                    <tr>
+                        <th>ID de Registro</th>
+                        <th>Usuario</th>
+                        <th>Estado</th>
+                        <th>Descripción</th>
+                        <th>IP</th>
+                        <th>Fecha y Hora</th>
+                    </tr>
+                </thead>
+                <tbody id="auditData">
+                    <!-- Los datos se cargarán aquí desde JavaScript -->
+                </tbody>
+            </table>
+        </div>
+
+        <div class="d-flex justify-content-between mt-3">
+            <button id="prevPage" class="btn btn-outline-secondary">&laquo; Anterior</button>
+            <span id="pageInfo">Página 1</span>
+            <button id="nextPage" class="btn btn-outline-secondary">Siguiente &raquo;</button>
+        </div>
+    </div>
+
+    <script>
+        // Variables para controlar la paginación
+        let currentPage = 1;
+        const itemsPerPage = 20;
+        let token = localStorage.getItem('authToken');
+
+        // Cargar datos al iniciar la página
+        document.addEventListener('DOMContentLoaded', () => {
+            checkAuthAndLoadData();
+
+            // Configurar eventos para los botones
+            document.getElementById('applyFilter').addEventListener('click', () => {
+                currentPage = 1;
+                loadAuditData();
+            });
+
+            document.getElementById('prevPage').addEventListener('click', () => {
+                if (currentPage > 1) {
+                    currentPage--;
+                    loadAuditData();
+                }
+            });
+
+            document.getElementById('nextPage').addEventListener('click', () => {
+                currentPage++;
+                loadAuditData();
+            });
+        });
+
+        function checkAuthAndLoadData() {
+            if (!token) {
+                window.location.href = '/index.html';
+                return;
+            }
+
+            loadAuditData();
+        }
+
+        function loadAuditData() {
+            const offset = (currentPage - 1) * itemsPerPage;
+
+            // Construir URL con filtros
+            let url = `/audit-logs?limit=${itemsPerPage}&offset=${offset}`;
+
+            const userFilter = document.getElementById('userFilter').value;
+            const stateFilter = document.getElementById('stateFilter').value;
+            const dateFilter = document.getElementById('dateFilter').value;
+
+            if (userFilter) url += `&userId=${userFilter}`;
+            // Se aplicarían más filtros en el backend si fuera necesario
+
+            fetch(url, {
+                headers: {
+                    'Authorization': token
+                }
+            })
+                .then(response => {
+                    if (response.status === 401 || response.status === 403) {
+                        localStorage.removeItem('authToken');
+                        window.location.href = '/index.html';
+                        return null;
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data) {
+                        renderAuditData(data);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error al cargar datos de auditoría:', error);
+                    alert('Error al cargar datos de auditoría');
+                });
+        }
+
+        function renderAuditData(data) {
+            const tbody = document.getElementById('auditData');
+            tbody.innerHTML = '';
+
+            if (data.data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center">No hay registros disponibles</td></tr>';
+                return;
+            }
+
+            data.data.forEach(log => {
+                const row = document.createElement('tr');
+
+                // Formatear fecha
+                const date = new Date(log.date);
+                const formattedDate = date.toLocaleString();
+
+                // Aplicar color según el estado
+                let stateClass = '';
+                if (log.state === 'LOGIN_SUCCESS' || log.state === 'ACCOUNT_UNLOCKED' || log.state === 'PASSWORD_RESET_SUCCESS') {
+                    stateClass = 'text-success';
+                } else if (log.state === 'LOGIN_FAILED' || log.state === 'ACCOUNT_BLOCKED') {
+                    stateClass = 'text-danger';
+                }
+
+                row.innerHTML = `
+                    <td>${log.log_id}</td>
+                    <td>${log.user_id || 'N/A'}</td>
+                    <td class="${stateClass}">${log.state}</td>
+                    <td>${log.description}</td>
+                    <td>${log.ip || 'N/A'}</td>
+                    <td>${formattedDate}</td>
+                `;
+
+                tbody.appendChild(row);
+            });
+
+            // Actualizar información de página
+            document.getElementById('pageInfo').textContent = `Página ${currentPage}`;
+        }
+    </script>
+</body>
+
+</html>
