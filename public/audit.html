@@ -17,12 +17,24 @@
             border-radius: 5px;
             margin-bottom: 20px;
         }
+
+        .header-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
     </style>
 </head>
 
 <body>
     <div class="container mt-4">
-        <h1>Sistema de Auditoría</h1>
+        <div class="header-container">
+            <h1>Sistema de Auditoría</h1>
+            <button onclick="returnPanel()" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Volver al Panel Admin
+            </button>
+        </div>
 
         <div class="filter-section">
             <h4>Filtros</h4>
@@ -35,19 +47,16 @@
                     <label for="stateFilter">Estado:</label>
                     <select id="stateFilter" class="form-select">
                         <option value="">Todos</option>
-                        <!-- <option value="LOGIN_SUCCESS">Inicio de sesión exitoso</option>
+                        <option value="LOGIN_SUCCESS">Inicio de sesión exitoso</option>
                         <option value="LOGIN_FAILED">Inicio de sesión fallido</option>
                         <option value="ACCOUNT_BLOCKED">Cuenta bloqueada</option>
                         <option value="ACCOUNT_UNLOCKED">Cuenta desbloqueada</option>
                         <option value="PASSWORD_RESET_REQUEST">Solicitud de reseteo</option>
                         <option value="PASSWORD_RESET_SUCCESS">Reseteo exitoso</option>
-                        <option value="USER_REGISTERED">Usuario registrado</option> -->
+                        <option value="USER_REGISTERED">Usuario registrado</option>
                     </select>
                 </div>
-                <div class="col-md-3">
-                    <label for="dateFilter">Fecha:</label>
-                    <input type="date" id="dateFilter" class="form-control">
-                </div>
+        
                 <div class="col-md-3 d-flex align-items-end">
                     <button id="applyFilter" class="btn btn-primary mb-0">Aplicar Filtros</button>
                 </div>
@@ -107,6 +116,9 @@
                 loadAuditData();
             });
         });
+        function returnPanel() {
+            window.location.href = 'admin.html';
+        }
 
         function checkAuthAndLoadData() {
             if (!token) {
@@ -117,6 +129,8 @@
             loadAuditData();
         }
 
+        // Reemplaza la función loadAuditData() en audit.html con esta versión mejorada
+
         function loadAuditData() {
             const offset = (currentPage - 1) * itemsPerPage;
 
@@ -125,11 +139,10 @@
 
             const userFilter = document.getElementById('userFilter').value;
             const stateFilter = document.getElementById('stateFilter').value;
-            const dateFilter = document.getElementById('dateFilter').value;
 
             if (userFilter) url += `&userId=${userFilter}`;
-            // Se aplicarían más filtros en el backend si fuera necesario
-
+            if (stateFilter) url += `&state=${stateFilter}`;
+        
             fetch(url, {
                 headers: {
                     'Authorization': token
